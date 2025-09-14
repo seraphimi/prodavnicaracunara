@@ -1,7 +1,5 @@
 package com.example.prodavnicaracunara.service;
 
-import com.example.prodavnicaracunara.dto.NarudzbaDTO;
-import com.example.prodavnicaracunara.dto.ProizvodDTO;
 import com.example.prodavnicaracunara.entity.*;
 import com.example.prodavnicaracunara.exception.ResourceNotFoundException;
 import com.example.prodavnicaracunara.repository.KupacRepository;
@@ -36,31 +34,34 @@ public class NarudzbaService {
     
     @Autowired
     private ProizvodService proizvodService;
-    
-    @Autowired
-    private KupacService kupacService;
 
     /**
      * Creates a new order
      */
-    public NarudzbaDTO createNarudzba(NarudzbaDTO narudzbaDTO) {
-        logger.info("Creating new order for customer ID: {}", narudzbaDTO.getKupacId());
+    public Narudzba createNarudzba(Narudzba narudzba) {
+        logger.info("Creating new order for customer ID: {}", narudzba.getKupac() != null ? narudzba.getKupac().getId() : "null");
         
         // Validate customer exists
-        Kupac kupac = kupacRepository.findById(narudzbaDTO.getKupacId())
-                .orElseThrow(() -> new ResourceNotFoundException("Kupac with ID " + narudzbaDTO.getKupacId() + " not found"));
-        
-        // Validate products exist and calculate total price
-        List<Proizvod> proizvodi = validateAndGetProizvodi(narudzbaDTO.getProizvodIds());
-        BigDecimal calculatedTotal = calculateTotalPrice(proizvodi);
-        
-        // Validate provided total matches calculated total
-        if (narudzbaDTO.getUkupnaCena().compareTo(calculatedTotal) != 0) {
-            throw new IllegalArgumentException("Provided total price does not match calculated total");
+        if (narudzba.getKupac() == null || narudzba.getKupac().getId() == null) {
+            throw new IllegalArgumentException("Customer is required for order");
         }
         
+        Kupac kupac = kupacRepository.findById(narudzba.getKupac().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Kupac with ID " + narudzba.getKupac().getId() + " not found"));
+        
+        // Validate products exist and calculate total price
+        List<Proizvod> proizvodi = narudzba.getProizvodi();
+        if (proizvodi == null || proizvodi.isEmpty()) {
+            throw new IllegalArgumentException("At least one product is required for order");
+        }
+        
+        // Fetch full product details and validate
+        List<Long> proizvodIds = proizvodi.stream().map(Proizvod::getId).collect(Collectors.toList());
+        List<Proizvod> fullProizvodi = validateAndGetProizvodi(proizvodIds);
+        BigDecimal calculatedTotal = calculateTotalPrice(fullProizvodi);
+        
         // Check stock availability
-        validateStockAvailability(proizvodi);
+        validateStockAvailability(fullProizvodi);
         
         // Generate unique order number
         String brojNarudzbe;
@@ -69,10 +70,9 @@ public class NarudzbaService {
         } while (narudzbaRepository.existsByBrojNarudzbe(brojNarudzbe));
         
         // Create order
-        Narudzba narudzba = new Narudzba();
         narudzba.setBrojNarudzbe(brojNarudzbe);
         narudzba.setKupac(kupac);
-        narudzba.setProizvodi(proizvodi);
+        narudzba.setProizvodi(fullProizvodi);
         narudzba.setUkupnaCena(calculatedTotal);
         narudzba.setStatus(StatusNarudzbe.U_OBRADI);
         narudzba.setDatumKreiranja(LocalDateTime.now());
@@ -80,76 +80,65 @@ public class NarudzbaService {
         Narudzba savedNarudzba = narudzbaRepository.save(narudzba);
         
         // Reduce stock for ordered products
-        for (Proizvod proizvod : proizvodi) {
+        for (Proizvod proizvod : fullProizvodi) {
             proizvodService.reduceStock(proizvod.getId(), 1); // Assuming quantity 1 for each product
         }
         
         logger.info("Order created successfully with number: {}", brojNarudzbe);
-        return convertToDTO(savedNarudzba);
+        return savedNarudzba;
     }
 
     /**
      * Gets all orders
      */
     @Transactional(readOnly = true)
-    public List<NarudzbaDTO> getAllNarudzbe() {
+    public List<Narudzba> getAllNarudzbe() {
         logger.debug("Fetching all orders");
-        return narudzbaRepository.findAll()
-                .stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return narudzbaRepository.findAll();
     }
 
     /**
      * Gets an order by ID
      */
     @Transactional(readOnly = true)
-    public NarudzbaDTO getNarudzbaById(Long id) {
+    public Narudzba getNarudzbaById(Long id) {
         logger.debug("Fetching order with ID: {}", id);
-        Narudzba narudzba = narudzbaRepository.findById(id)
+        return narudzbaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Narudzba with ID " + id + " not found"));
-        return convertToDTO(narudzba);
     }
 
     /**
      * Gets an order by order number
      */
     @Transactional(readOnly = true)
-    public NarudzbaDTO getNarudzbaByBrojNarudzbe(String brojNarudzbe) {
+    public Narudzba getNarudzbaByBrojNarudzbe(String brojNarudzbe) {
         logger.debug("Fetching order with number: {}", brojNarudzbe);
-        Narudzba narudzba = narudzbaRepository.findByBrojNarudzbe(brojNarudzbe)
+        return narudzbaRepository.findByBrojNarudzbe(brojNarudzbe)
                 .orElseThrow(() -> new ResourceNotFoundException("Narudzba with number " + brojNarudzbe + " not found"));
-        return convertToDTO(narudzba);
     }
 
     /**
      * Gets orders by customer ID
      */
     @Transactional(readOnly = true)
-    public List<NarudzbaDTO> getNarudzbeByKupacId(Long kupacId) {
+    public List<Narudzba> getNarudzbeByKupacId(Long kupacId) {
         logger.debug("Fetching orders for customer ID: {}", kupacId);
-        return narudzbaRepository.findByKupacId(kupacId)
-                .stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return narudzbaRepository.findByKupacId(kupacId);
     }
 
     /**
      * Gets orders by status
      */
     @Transactional(readOnly = true)
-    public List<NarudzbaDTO> getNarudzbeByStatus(StatusNarudzbe status) {
+    public List<Narudzba> getNarudzbeByStatus(StatusNarudzbe status) {
         logger.debug("Fetching orders with status: {}", status);
-        return narudzbaRepository.findByStatus(status)
-                .stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return narudzbaRepository.findByStatus(status);
     }
 
     /**
      * Updates order status
      */
-    public NarudzbaDTO updateOrderStatus(Long id, StatusNarudzbe newStatus) {
+    public Narudzba updateOrderStatus(Long id, StatusNarudzbe newStatus) {
         logger.info("Updating order status for ID: {} to {}", id, newStatus);
         
         Narudzba narudzba = narudzbaRepository.findById(id)
@@ -162,13 +151,13 @@ public class NarudzbaService {
         Narudzba updatedNarudzba = narudzbaRepository.save(narudzba);
         
         logger.info("Order status updated successfully: {}", id);
-        return convertToDTO(updatedNarudzba);
+        return updatedNarudzba;
     }
 
     /**
      * Cancels an order
      */
-    public NarudzbaDTO cancelOrder(Long id) {
+    public Narudzba cancelOrder(Long id) {
         logger.info("Cancelling order with ID: {}", id);
         
         Narudzba narudzba = narudzbaRepository.findById(id)
@@ -189,19 +178,16 @@ public class NarudzbaService {
         Narudzba cancelledNarudzba = narudzbaRepository.save(narudzba);
         
         logger.info("Order cancelled successfully: {}", id);
-        return convertToDTO(cancelledNarudzba);
+        return cancelledNarudzba;
     }
 
     /**
      * Gets active orders for monitoring
      */
     @Transactional(readOnly = true)
-    public List<NarudzbaDTO> getActiveOrders() {
+    public List<Narudzba> getActiveOrders() {
         logger.debug("Fetching active orders for monitoring");
-        return narudzbaRepository.findActiveOrders()
-                .stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        return narudzbaRepository.findActiveOrders();
     }
 
     /**
@@ -268,23 +254,5 @@ public class NarudzbaService {
         if (currentStatus == StatusNarudzbe.ISPORUCENA || currentStatus == StatusNarudzbe.OTKAZANA) {
             throw new IllegalArgumentException("Cannot change status of delivered or cancelled order");
         }
-    }
-
-    private NarudzbaDTO convertToDTO(Narudzba narudzba) {
-        NarudzbaDTO dto = new NarudzbaDTO();
-        dto.setId(narudzba.getId());
-        dto.setBrojNarudzbe(narudzba.getBrojNarudzbe());
-        dto.setKupacId(narudzba.getKupac().getId());
-        dto.setKupac(kupacService.getKupacById(narudzba.getKupac().getId()));
-        dto.setProizvodIds(narudzba.getProizvodi().stream().map(Proizvod::getId).collect(Collectors.toList()));
-        dto.setProizvodi(narudzba.getProizvodi().stream().map(this::convertProizvodToDTO).collect(Collectors.toList()));
-        dto.setUkupnaCena(narudzba.getUkupnaCena());
-        dto.setStatus(narudzba.getStatus());
-        dto.setDatumKreiranja(narudzba.getDatumKreiranja());
-        return dto;
-    }
-    
-    private ProizvodDTO convertProizvodToDTO(Proizvod proizvod) {
-        return proizvodService.getProizvodById(proizvod.getId());
     }
 }
