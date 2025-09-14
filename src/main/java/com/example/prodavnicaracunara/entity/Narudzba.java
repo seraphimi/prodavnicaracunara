@@ -1,5 +1,7 @@
 package com.example.prodavnicaracunara.entity;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
@@ -21,6 +23,7 @@ public class Narudzba {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "kupac_id", nullable = false)
     @NotNull(message = "Kupac je obavezan")
+    @JsonBackReference("kupac-narudzbe")
     private Kupac kupac;
     
     @ManyToMany(fetch = FetchType.LAZY)
@@ -44,6 +47,7 @@ public class Narudzba {
     private LocalDateTime datumKreiranja;
     
     @OneToOne(mappedBy = "narudzba", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference("narudzba-placanje")
     private Placanje placanje;
 
     // Constructors
