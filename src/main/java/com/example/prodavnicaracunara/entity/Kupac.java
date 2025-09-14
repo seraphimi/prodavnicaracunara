@@ -1,5 +1,6 @@
 package com.example.prodavnicaracunara.entity;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import java.util.List;
@@ -36,6 +37,7 @@ public class Kupac {
     private String adresa;
     
     @OneToMany(mappedBy = "kupac", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference("kupac-narudzbe")
     private List<Narudzba> narudzbe;
 
     // Constructors

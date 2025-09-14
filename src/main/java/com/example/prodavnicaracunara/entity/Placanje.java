@@ -1,5 +1,6 @@
 package com.example.prodavnicaracunara.entity;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import java.time.LocalDateTime;
@@ -15,6 +16,7 @@ public class Placanje {
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "narudzba_id", nullable = false)
     @NotNull(message = "Narudžba je obavezna")
+    @JsonBackReference("narudzba-placanje")
     private Narudzba narudzba;
     
     @Enumerated(EnumType.STRING)
