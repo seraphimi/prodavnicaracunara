@@ -23,7 +23,7 @@ public class KupacController {
 
     @PostMapping
     public ResponseEntity<Kupac> createKupac(@Valid @RequestBody Kupac kupac) {
-        logger.info("REST request to create Kupsdfafadfdfc: {} {}", kupac.getIme(), kupac.getPrezime());
+        logger.info("REST request to create dddfdaaaafsssssKupsdfaac: {} {}", kupac.getIme(), kupac.getPrezime());
         Kupac createdKupac = kupacService.createKupac(kupac);
         return new ResponseEntity<>(createdKupac, HttpStatus.CREATED);
     }
